@@ -47,7 +47,7 @@ from scholarly._proxy_generator import MaxTriesExceededException
 # Adjustable Parameters/Defaults
 # -----------------------------
 USE_FREE_PROXY = False       # Toggle to attempt free proxies
-DELAY_BETWEEN_QUERIES = 5    # Seconds to sleep between references
+DELAY_BETWEEN_QUERIES = 15    # Seconds to sleep between references
 # -----------------------------
 
 
