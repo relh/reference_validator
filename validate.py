@@ -1,200 +1,318 @@
 #!/usr/bin/env python3
 """
-validate_bib.py
-
-Parses a BibTeX file, queries Google Scholar for each reference using
-the 'scholarly' library, and tries to fix or validate the entry’s metadata.
-Results are written to 'clean_references.bib' with changes only where
-mismatches are found. References that do not match anything on Scholar
-are flagged.
+validate.py
 
 Usage:
-    python validate_bib.py --bibfile references.bib
+  python validate.py --input references.bib --output clean_references.bib
+
+Description:
+  1) (Optional) Sets up free proxies via scholarly.ProxyGenerator.
+  2) Loads any existing output .bib to skip references already processed.
+  3) For each unprocessed reference in the input .bib:
+     - Extract the exact title field (string).
+     - Call scholarly.search_single_pub(title, filled=True) to retrieve a single best match.
+     - If found, parse pub.bibtex for the official "Cite" BibTeX.
+       * Merge only missing fields into your original. 
+         If a mismatch is detected, log it but keep your original field.
+       * If no official BibTeX, partially fill from pub.bib but again preserve your original.
+     - If no match is found, keep the original as-is.
+  4) Writes partial results after each entry to avoid losing progress.
+  5) After all are processed, shows a unified diff of how the .bib was changed.
 
 Dependencies:
-    pip install scholarly bibtexparser difflib
+  - scholarly (>= 1.7.11)
+  - bibtexparser
+  - python-Levenshtein + thefuzz (if you want fuzzy features, but not used here)
+
+Notes:
+  - If you pass an inexact or ambiguous title, search_single_pub might return
+    the "wrong" paper or None. You can adapt as needed.
+  - Increase DELAY_BETWEEN_QUERIES if you experience blocks.
 """
 
+import os
+import sys
 import time
 import difflib
 import argparse
+
 import bibtexparser
-from bibtexparser.bparser import BibTexParser
-from bibtexparser.customization import convert_to_unicode
-from scholarly import scholarly
+from bibtexparser.bwriter import BibTexWriter
+from bibtexparser.bibdatabase import BibDatabase
 
-def find_best_scholar_match(entry, max_results=3):
+from scholarly import scholarly, ProxyGenerator
+from scholarly._proxy_generator import MaxTriesExceededException
+
+# -----------------------------
+# Adjustable Parameters/Defaults
+# -----------------------------
+USE_FREE_PROXY = False       # Toggle to attempt free proxies
+DELAY_BETWEEN_QUERIES = 5    # Seconds to sleep between references
+# -----------------------------
+
+
+def load_existing_output_db(output_path: str) -> BibDatabase:
     """
-    Search Google Scholar for a given BibTeX entry (by title).
-    Return the 'best' match’s metadata if any results are found, else None.
-
-    :param entry: A dictionary representing the parsed BibTeX entry.
-    :param max_results: How many search results to retrieve before we pick the first 'reasonable' match.
-    :return: A dictionary with 'title', 'author', 'year', 'venue' (if found), or None if no match.
+    If 'output_path' exists, parse it into a BibDatabase.
+    Otherwise return an empty database.
     """
-    title = entry.get("title", "")
-    if not title:
-        return None
-
-    # Attempt a search by title.
-    search_query = scholarly.search_pubs(title)
-
-    # Pull the first few results and see if one matches well enough.
-    # The logic here is simplistic. You might want to do fuzzy matching, 
-    # checking author overlap, year alignment, etc.
-    for i in range(max_results):
-        try:
-            pub = next(search_query)
-        except StopIteration:
-            break  # No more results
-
-        # The 'bib' field in the publication object typically has keys 
-        # like 'title', 'author', 'pub_year', 'venue', etc.
-        pub_bib = pub.bib
-        # Basic check: if the titles are close enough, consider it a match.
-        # We'll do a simple ratio-based match. You could expand with fuzzy matching libraries.
-        ratio = difflib.SequenceMatcher(None, title.lower(), pub_bib.get("title", "").lower()).ratio()
-        if ratio > 0.7:  # adjust threshold as desired
-            return {
-                "title": pub_bib.get("title", ""),
-                "author": pub_bib.get("author", ""),
-                "year": pub_bib.get("pub_year", ""),
-                "venue": pub_bib.get("venue", ""),  # could be journal, booktitle, etc.
-            }
-
-    return None  # If we exhaust search results and find no good match.
-
-
-def update_bib_entry(original_entry, scholar_info):
-    """
-    Given the original entry dict and new scholar_info dict,
-    produce an updated version with corrected or added fields.
-
-    :param original_entry: dict from BibTeX parser
-    :param scholar_info: dict with 'title', 'author', 'year', 'venue'
-    :return: updated dict, or None if no change
-    """
-    updated_entry = original_entry.copy()
-    changed = False
-
-    # Define a small helper for setting fields if they differ.
-    def maybe_update(field_name, new_value):
-        nonlocal changed
-        old_value = updated_entry.get(field_name, "")
-        # If new_value is present and meaningfully different, update and note the change.
-        if new_value and (old_value.strip() != new_value.strip()):
-            updated_entry[field_name] = new_value.strip()
-            changed = True
-
-    maybe_update("title", scholar_info["title"])
-    maybe_update("author", scholar_info["author"])
-    maybe_update("year", str(scholar_info["year"]))
-
-    # Decide whether 'venue' should go to 'journal' or 'booktitle'.
-    # This is quite heuristic-based and depends on your style rules:
-    # e.g. if original has 'journal', we keep it. Otherwise, put it in 'booktitle' if it’s a conference.
-    # This example is simplistic and needs your own domain logic.
-    venue = scholar_info["venue"]
-    if "conference" in venue.lower() or "conf" in venue.lower():
-        maybe_update("booktitle", venue)
+    if os.path.isfile(output_path):
+        with open(output_path, "r", encoding="utf-8") as f:
+            return bibtexparser.load(f)
     else:
-        # Could be a journal or unknown
-        maybe_update("journal", venue)
-
-    return updated_entry if changed else None
+        return BibDatabase()
 
 
-def bib_dict_to_string(entry):
+def write_bib_to_disk(db: BibDatabase, outfile: str):
     """
-    Re-serialize a single entry dict to a BibTeX string snippet
-    (for diffing or printing). Minimal formatting for clarity.
+    Serialize the given BibDatabase 'db' to 'outfile' with bibtexparser.
     """
-    lines = [f"@{entry.get('type', 'misc')}{{{entry.get('id', 'NO_KEY')},"]
-    for key, value in entry.items():
-        if key in ["type", "id"]:
+    writer = BibTexWriter()
+    # We don't reorder entries; they stay in the order appended
+    writer.order_entries_by = None
+    bib_str = bibtexparser.dumps(db, writer)
+    with open(outfile, "w", encoding="utf-8") as f:
+        f.write(bib_str)
+    print(f"  [INFO] Wrote partial/final results to '{outfile}'")
+
+
+def parse_official_bibtex(raw_bibtex: str, original_id: str, original_type: str) -> dict:
+    """
+    Given a raw BibTeX string from 'pub.bibtex',
+    parse it with bibtexparser and return a dictionary representing
+    the single entry, preserving the original ID and ENTRYTYPE.
+    """
+    new_entry = {}
+    try:
+        temp_db = bibtexparser.loads(raw_bibtex)
+        if temp_db.entries:
+            new_entry = temp_db.entries[0]
+        else:
+            print("  [WARN] Official BibTeX was parsed but contained no entries.")
+    except Exception as e:
+        print(f"  [ERROR] Could not parse official BibTeX: {e}")
+        return {}
+
+    # Force ID and type to match the original
+    new_entry["ID"] = original_id
+    new_entry["ENTRYTYPE"] = original_type
+    return new_entry
+
+
+def merge_entries_preserving_original(original: dict, official: dict) -> dict:
+    """
+    Merge fields from 'official' into 'original', but preserve
+    anything the original already has. If there's a mismatch,
+    we log a warning but keep the original field.
+
+    Return a new dictionary representing the final merged entry.
+    """
+    merged = dict(original)  # Copy so we don't mutate the caller
+
+    for field, off_value in official.items():
+        # Skip special fields
+        if field in ["ID", "ENTRYTYPE"]:
             continue
-        lines.append(f"  {key} = {{{value}}},")
-    lines.append("}")
-    return "\n".join(lines)
+
+        orig_value = merged.get(field, "")
+        if not orig_value and off_value:
+            # Fill missing field
+            merged[field] = off_value
+        elif orig_value and off_value and (orig_value.strip() != off_value.strip()):
+            # There's a mismatch. Log it, but keep the original
+            print(f"    [MISMATCH] Field '{field}':")
+            print(f"      Original: {orig_value}")
+            print(f"      Official: {off_value}")
+            print(f"    Keeping original field value.")
+
+    return merged
+
+
+def merge_partial_pub_data(original: dict, partial_bib: dict) -> dict:
+    """
+    If 'official' BibTeX is not available, we might only have partial pub.bib data.
+    Merge it similarly to merge_entries_preserving_original.
+    Return the merged dict.
+    """
+    merged = dict(original)  # Copy so we don't mutate
+
+    # We only handle a few commonly used fields from 'pub.bib'
+    possible_fields = ["title", "author", "year", "venue", "abstract"]
+    for field in possible_fields:
+        pub_val = partial_bib.get(field, "")
+        if not pub_val:
+            continue
+
+        if field == "venue":
+            # Attempt to guess if this is a conference or journal
+            # but preserve original if there's a mismatch
+            original_venue = merged.get("booktitle") or merged.get("journal") or ""
+            if not original_venue and pub_val:
+                if any(token in pub_val.lower() for token in ["conf", "conference", "proc", "workshop"]):
+                    merged["booktitle"] = pub_val
+                else:
+                    merged["journal"] = pub_val
+            elif original_venue and pub_val and (original_venue.strip() != pub_val.strip()):
+                print(f"    [MISMATCH] Original venue: {original_venue} vs partial 'venue': {pub_val}")
+                print("    Keeping original venue.")
+        elif field == "author":
+            orig_authors = merged.get("author", "")
+            # If there's no author in original, fill it
+            if not orig_authors and pub_val:
+                # pub_val might be a string or list. If list, join with ' and '
+                if isinstance(pub_val, list):
+                    pub_val = " and ".join(pub_val)
+                merged["author"] = pub_val
+            elif orig_authors and pub_val and (orig_authors.strip() != pub_val.strip()):
+                print(f"    [MISMATCH] Original authors: {orig_authors} vs partial: {pub_val}")
+                print("    Keeping original authors.")
+        else:
+            # normal field (title, year, abstract) 
+            original_val = merged.get(field, "")
+            if not original_val and pub_val:
+                merged[field] = pub_val
+            elif original_val and pub_val and (original_val.strip() != pub_val.strip()):
+                print(f"    [MISMATCH] Field '{field}':")
+                print(f"      Original: {original_val}")
+                print(f"      Partial: {pub_val}")
+                print("    Keeping original field value.")
+
+    return merged
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Validate .bib references via Google Scholar.")
-    parser.add_argument("--bibfile", type=str, required=True, help="Path to your .bib file.")
+    parser = argparse.ArgumentParser(description="Validate BibTeX references via Google Scholar.")
+    parser.add_argument("--input", "-i", required=True, help="Path to the input .bib file.")
+    parser.add_argument("--output", "-o", required=True, help="Path to the corrected .bib file.")
     args = parser.parse_args()
 
-    bib_filename = args.bibfile
-    output_filename = "clean_references.bib"
+    # (Optional) Set up free proxy to reduce blocking
+    if USE_FREE_PROXY:
+        print("[INFO] Attempting to set up free proxies with ProxyGenerator()...")
+        pg = ProxyGenerator()
+        if pg.FreeProxies():
+            scholarly.use_proxy(pg)
+            print("[INFO] Successfully using free proxies.")
+        else:
+            print("[WARN] Could not set up free proxies. Proceeding without proxy.")
 
-    # Load the .bib file
-    with open(bib_filename, "r", encoding="utf-8") as bib_file:
-        parser = BibTexParser(customization=convert_to_unicode)
-        bib_database = bibtexparser.load(bib_file, parser=parser)
+    # 1) Load original .bib
+    if not os.path.isfile(args.input):
+        print(f"[ERROR] Input file '{args.input}' not found.")
+        sys.exit(1)
+    with open(args.input, "r", encoding="utf-8") as bibfile:
+        original_db = bibtexparser.load(bibfile)
+    total_entries = len(original_db.entries)
 
-    # Lists to track progress
-    updated_entries = []
-    failed_entries = []
+    # 2) Load existing output (partial progress)
+    existing_db = load_existing_output_db(args.output)
+    processed_ids = {e["ID"] for e in existing_db.entries if "ID" in e}
 
-    for idx, entry in enumerate(bib_database.entries):
-        # Save the original for diffing
-        original_string = bib_dict_to_string(entry)
+    # We'll build our final corrected DB from what's already in output
+    corrected_db = BibDatabase()
+    corrected_db.entries = list(existing_db.entries)
 
-        # Sleep to avoid spamming Google Scholar (1 query / ~10 sec)
-        if idx > 0:
-            time.sleep(10)
+    print(f"[INFO] Found {total_entries} entries in '{args.input}'")
+    print(f"[INFO] Already processed: {len(processed_ids)} entries in '{args.output}'")
 
-        # Try to find a match on Scholar
-        scholar_info = find_best_scholar_match(entry)
+    # 3) Process each entry if not already processed
+    for idx, entry in enumerate(original_db.entries):
+        entry_id = entry.get("ID", f"UNKNOWN_{idx}")
+        entry_type = entry.get("ENTRYTYPE", "misc")
 
-        if not scholar_info:
-            # Could not find a valid match
-            failed_entries.append(entry.get('id', '(no ID)'))
-            updated_entries.append(entry)  # Keep it as-is
+        if entry_id in processed_ids:
+            print(f"\n=== Skipping already-processed entry '{entry_id}' ===")
             continue
 
-        # Attempt updating
-        new_entry = update_bib_entry(entry, scholar_info)
+        print(f"\n=== Processing entry '{entry_id}' (#{idx+1}/{total_entries}) ===")
 
-        if new_entry:
-            # Show diff between old and new
-            new_string = bib_dict_to_string(new_entry)
-            diff = difflib.unified_diff(
-                original_string.splitlines(keepends=True),
-                new_string.splitlines(keepends=True),
-                fromfile=f"{entry.get('id')}_original",
-                tofile=f"{entry.get('id')}_updated",
-            )
-            diff_output = "".join(diff)
+        # We'll rely on the "title" field for search_single_pub
+        title = entry.get("title", "").strip()
+        if not title:
+            print(f"  [WARN] No title in entry '{entry_id}'. Keeping original.")
+            corrected_db.entries.append(entry)
+            processed_ids.add(entry_id)
+            write_bib_to_disk(corrected_db, args.output)
+            time.sleep(DELAY_BETWEEN_QUERIES)
+            continue
 
-            if diff_output.strip():
-                print("============================================================")
-                print(f"DIFF for entry: {entry.get('id')}")
-                print(diff_output)
-                print("============================================================")
+        # Attempt to retrieve single best match from Google Scholar
+        try:
+            pub = scholarly.search_single_pub(title, filled=True)
+        except MaxTriesExceededException as e:
+            print(f"[ERROR] Scholarly blocked us: {e}")
+            print("[ERROR] Saving partial results and stopping.")
+            write_bib_to_disk(corrected_db, args.output)
+            sys.exit(1)
+        except Exception as e:
+            print(f"[ERROR] Unexpected error searching for '{title}': {e}")
+            print("[ERROR] Saving partial results and stopping.")
+            write_bib_to_disk(corrected_db, args.output)
+            sys.exit(1)
 
-            updated_entries.append(new_entry)
+        if pub is None:
+            # No match found
+            print("  [WARN] No match found. Keeping original.")
+            corrected_db.entries.append(entry)
         else:
-            # No changes were made
-            updated_entries.append(entry)
+            # If the official BibTeX was found (pub.bibtex)
+            if hasattr(pub, "bibtex") and pub.bibtex:
+                print("  [INFO] Found official BibTeX from 'Cite' button.")
+                official_bib = parse_official_bibtex(pub.bibtex, entry_id, entry_type)
 
-    # Update the bib_database in place with new entries
-    bib_database.entries = updated_entries
+                if official_bib:
+                    # Merge official fields into original, but keep original on mismatch
+                    merged_entry = merge_entries_preserving_original(original=entry, official=official_bib)
+                    corrected_db.entries.append(merged_entry)
+                else:
+                    print("  [WARN] Could not parse official bib. Keeping original.")
+                    corrected_db.entries.append(entry)
+            else:
+                # No official bibtex => fallback to partial data in pub.bib
+                print("  [WARN] No official BibTeX. Fallback to partial pub.bib.")
+                partial_bib = {}
+                if hasattr(pub, "bib"):
+                    partial_bib = pub.bib
+                elif isinstance(pub, dict):
+                    partial_bib = pub.get("bib", {})
 
-    # Write out the clean references
-    with open(output_filename, "w", encoding="utf-8") as out_bib:
-        bibtexparser.dump(bib_database, out_bib)
+                if partial_bib:
+                    merged_entry = merge_partial_pub_data(original=entry, partial_bib=partial_bib)
+                    corrected_db.entries.append(merged_entry)
+                else:
+                    print("  [WARN] No partial data found. Keeping original.")
+                    corrected_db.entries.append(entry)
 
-    # Report on references that failed
-    if failed_entries:
-        print("\nThe following references did not match anything on Google Scholar:")
-        for f in failed_entries:
-            print(f" - {f}")
+        # Mark this entry as processed, save partial results
+        processed_ids.add(entry_id)
+        write_bib_to_disk(corrected_db, args.output)
+        time.sleep(DELAY_BETWEEN_QUERIES)
+
+    # 4) After processing all, print a unified diff of final vs. original
+    print("\n[INFO] Finished processing all entries successfully.")
+    with open(args.input, "r", encoding="utf-8") as orig_f:
+        original_bib_txt = orig_f.read()
+    with open(args.output, "r", encoding="utf-8") as new_f:
+        new_bib_txt = new_f.read()
+
+    diff = difflib.unified_diff(
+        original_bib_txt.splitlines(keepends=True),
+        new_bib_txt.splitlines(keepends=True),
+        fromfile=args.input,
+        tofile=args.output
+    )
+    diff_text = "".join(diff)
+    if diff_text.strip():
+        print("\n=== Diff between original and corrected .bib files ===")
+        print(diff_text)
     else:
-        print("\nAll references matched something on Google Scholar.")
-
-    print(f"\nUpdated BibTeX file written to: {output_filename}")
+        print("\nNo changes detected between the original and corrected .bib files.")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("[INFO] KeyboardInterrupt. Saving partial results before exit.")
+        sys.exit(1)
 
