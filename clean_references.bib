@@ -1,0 +1,102 @@
+@inproceedings{sohl2015deep,
+ abstract = {A central problem in machine learning involves modeling complex data-sets using highly flexible families of probability distributions in which learning, sampling, inference, and evaluation are still analytically or computationally tractable. Here, we develop an approach that simultaneously achieves both flexibility and tractability. The essential idea, inspired by non-equilibrium statistical physics, is to systematically and slowly destroy structure in a data distribution through an iterative forward diffusion process. We then learn a reverse diffusion},
+ author = {Sohl-Dickstein, Jascha and Weiss, Eric and Maheswaranathan, Niru and Ganguli, Surya},
+ booktitle = {International conference on machine learning},
+ organization = {PMLR},
+ pages = {2256--2265},
+ title = {Deep unsupervised learning using nonequilibrium thermodynamics},
+ year = {2015}
+}
+
+@inproceedings{poole2023dreamfusion,
+ abstract = {Recent breakthroughs in text-to-image synthesis have been driven by diffusion models trained on billions of image-text pairs. Adapting this approach to 3D synthesis would require large-scale datasets of labeled 3D data and efficient architectures for denoising 3D data, neither of which currently exist. In this work, we circumvent these limitations by using a pretrained 2D text-to-image diffusion model to perform text-to-3D synthesis. We introduce a loss based on probability density distillation that enables the use of a 2D diffusion model as},
+ author = {Poole, Ben and Jain, Ajay and Barron, Jonathan T. and Mildenhall, Ben},
+ booktitle = {International Conference on Learning Representations (ICLR)},
+ title = {DreamFusion: Text-to-3D using 2D Diffusion},
+ url = {https://openreview.net/forum?id=FjNys5c7VyY},
+ year = {2023}
+}
+
+@inproceedings{radford2021learning,
+ abstract = {State-of-the-art computer vision systems are trained to predict a fixed set of predetermined object categories. This restricted form of supervision limits their generality and usability since additional labeled data is needed to specify any other visual concept. Learning directly from raw text about images is a promising alternative which leverages a much broader source of supervision. We demonstrate that the simple pre-training task of predicting which caption goes with which image is an efficient and scalable way to learn SOTA image representations},
+ author = {Radford, Alec and Kim, Jong Wook and Hallacy, Chris and Ramesh, Aditya and Goh, Gabriel and Agarwal, Sandhini and Sastry, Girish and Askell, Amanda and Mishkin, Pamela and others},
+ booktitle = {Proceedings of the 38th International Conference on Machine Learning (ICML)},
+ pages = {8748--8763},
+ title = {Learning Transferable Visual Models From Natural Language Supervision},
+ url = {https://proceedings.mlr.press/v139/radford21a.html},
+ year = {2021}
+}
+
+@inproceedings{rombach2022high,
+ abstract = {By decomposing the image formation process into a sequential application of denoising autoencoders, diffusion models (DMs) achieve state-of-the-art synthesis results on image data and beyond. Additionally, their formulation allows for a guiding mechanism to control the image generation process without retraining. However, since these models typically operate directly in pixel space, optimization of powerful DMs often consumes hundreds of GPU days and inference is expensive due to sequential evaluations. To enable DM training},
+ author = {Rombach, Robin and Blattmann, Andreas and Lorenz, Dominik and Esser, Patrick and Ommer, Bj{\"o}rn},
+ booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+ pages = {10684--10695},
+ title = {High-Resolution Image Synthesis with Latent Diffusion Models},
+ url = {https://openaccess.thecvf.com/content/CVPR2022/html/Rombach_High-Resolution_Image_Synthesis_With_Latent_Diffusion_Models_CVPR_2022_paper.html},
+ year = {2022}
+}
+
+@inproceedings{meng2022sdedit,
+ abstract = {Guided image synthesis enables everyday users to create and edit photo-realistic images with minimum effort. The key challenge is balancing faithfulness to the user input (eg, hand-drawn colored strokes) and realism of the synthesized image. Existing GAN-based methods attempt to achieve such balance using either conditional GANs or GAN inversions, which are challenging and often require additional training data or loss functions for individual applications. To address these issues, we introduce a new image synthesis and editing},
+ author = {Chenlin Meng and Yutong He and Yang Song and Jiaming Song and Jiajun Wu and Jun-Yan Zhu and Stefano Ermon},
+ booktitle = {International Conference on Learning Representations},
+ title = {{SDE}dit: Guided Image Synthesis and Editing with Stochastic Differential Equations},
+ url = {https://arxiv.org/abs/2108.01073},
+ year = {2022}
+}
+
+@inproceedings{liu2023meshdiffusion,
+ abstract = {We consider the task of generating realistic 3D shapes, which is useful for a variety of applications such as automatic scene generation and physical simulation. Compared to other 3D representations like voxels and point clouds, meshes are more desirable in practice, because (1) they enable easy and arbitrary manipulation of shapes for relighting and simulation, and (2) they can fully leverage the power of modern graphics pipelines which are mostly optimized for meshes. Previous scalable methods for generating meshes},
+ author = {Zhen Liu and Yao Feng and Michael J. Black and Derek Nowrouzezahrai and Liam Paull and Weiyang Liu},
+ booktitle = {International Conference on Learning Representations},
+ title = {MeshDiffusion: Score-based Generative 3D Mesh Modeling},
+ url = {https://arxiv.org/abs/2303.08133},
+ year = {2023}
+}
+
+@inproceedings{du2023reduce,
+ abstract = {Since their introduction, diffusion models have quickly become the prevailing approach to generative modeling in many domains. They can be interpreted as learning the gradients of a time-varying sequence of log-probability density functions. This interpretation has motivated classifier-based and classifier-free guidance as methods for post-hoc control of diffusion models. In this work, we build upon these ideas using the score-based interpretation of diffusion models, and explore alternative ways to condition, modify, and},
+ author = {Du, Yilun and Durkan, Conor and Strudel, Robin and Tenenbaum, Joshua B. and Dieleman, Sander and Fergus, Rob and Sohl-Dickstein, Jascha and Doucet, Arnaud and Grathwohl, Will},
+ booktitle = {Proceedings of the 40th International Conference on Machine Learning},
+ pages = {8489--8510},
+ publisher = {PMLR},
+ series = {Proceedings of Machine Learning Research},
+ title = {Reduce, Reuse, Recycle: Compositional Generation with Energy-Based Diffusion Models and MCMC},
+ url = {https://proceedings.mlr.press/v202/du23a.html},
+ volume = {202},
+ year = {2023}
+}
+
+@inproceedings{peng2024portraitbooth,
+ abstract = {Recent advancements in personalized image generation using diffusion models have been noteworthy. However existing methods suffer from inefficiencies due to the requirement for subject-specific fine-tuning. This computationally intensive process hinders efficient deployment limiting practical usability. Moreover these methods often grapple with identity distortion and limited expression diversity. In light of these challenges we propose PortraitBooth an innovative approach designed for high efficiency robust identity},
+ author = {Peng, Xu and Zhu, Junwei and Jiang, Boyuan and Tai, Ying and Luo, Donghao and Zhang, Jiangning and Lin, Wei and Jin, Taisong and Wang, Chengjie and Ji, Rongrong},
+ booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition},
+ pages = {27080--27090},
+ publisher = {IEEE},
+ title = {PortraitBooth: A Versatile Portrait Model for Fast Identity-Preserved Personalization},
+ url = {https://openaccess.thecvf.com/content/CVPR2024/html/Peng_PortraitBooth_A_Versatile_Portrait_Model_for_Fast_Identity-preserved_Personalization_CVPR_2024_paper.html},
+ year = {2024}
+}
+
+@inproceedings{Muller_2024_CVPR,
+ abstract = {We introduce MultiDiff a novel approach for consistent novel view synthesis of scenes from a single RGB image. The task of synthesizing novel views from a single reference image is highly ill-posed by nature as there exist multiple plausible explanations for unobserved areas. To address this issue we incorporate strong priors in form of monocular depth predictors and video-diffusion models. Monocular depth enables us to condition our model on warped reference images for the target views increasing geometric stability. The video},
+ author = {Norman M{\"u}ller and Katja Schwarz and Barbara R{\"o}ssle and Lorenzo Porzi and Samuel Rota Bul{\`o} and Matthias Nie{\ss}ner and Peter Kontschieder},
+ booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+ doi = {10.1109/CVPR52733.2024.00977},
+ pages = {10258--10268},
+ title = {MultiDiff: Consistent Novel View Synthesis from a Single Image},
+ url = {https://openaccess.thecvf.com/content/CVPR2024/html/Muller_MultiDiff_Consistent_Novel_View_Synthesis_from_a_Single_Image_CVPR_2024_paper.html},
+ year = {2024}
+}
+
+@inproceedings{liang2024caphuman,
+ abstract = {We concentrate on a novel human-centric image synthesis task that is given only one reference facial photograph it is expected to generate specific individual images with diverse head positions poses facial expressions and illuminations in different contexts. To accomplish this goal we argue that our generative model should be capable of the following favorable characteristics:(1) a strong visual and semantic understanding of our world and human society for basic object and human image generation.(2) generalizable identity},
+ author = {Chao Liang and Fan Ma and Linchao Zhu and Yingying Deng and Yi Yang},
+ booktitle = {Proceedings of the IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+ doi = {10.1109/CVPR52733.2024.00677},
+ pages = {6400--6409},
+ title = {CapHuman: Capture Your Moments in Parallel Universes},
+ url = {https://openaccess.thecvf.com/content/CVPR2024/html/Liang_CapHuman_Capture_Your_Moments_in_Parallel_Universes_CVPR_2024_paper.html},
+ year = {2024}
+}
